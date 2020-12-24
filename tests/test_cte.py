@@ -10,6 +10,7 @@ from django.db.models.expressions import (
     Exists, ExpressionWrapper, F, OuterRef, Subquery, Value,
 )
 from django.db.models.functions import Concat
+from django.db.models.sql.constants import LOUTER
 from django.test import TestCase
 
 from django_cte import With
@@ -369,4 +370,44 @@ class TestCTE(TestCase):
             ('proxima centauri b', 2),
             ('sun', 0),
             ('venus', 3)
+        ])
+
+    def test_outer_join(self):
+        REGIONS = ("bernard's star", "sun")
+
+        orders = With(
+            Order.objects
+            .values('region_id')
+            .annotate(amount=Sum(F('amount')))
+        )
+
+        joined_inner = (
+            orders
+            .join(
+                Region.objects.filter(name__in=REGIONS),
+                name=orders.col.region_id
+            )
+            .with_cte(orders)
+            .annotate(amount=orders.col.amount)
+        )
+
+        data_inner = [(_.name, _.amount) for _ in joined_inner]
+        self.assertEqual(data_inner, [
+            ('sun', 1000),
+        ])
+
+        joined_outer = (
+            orders
+            .join(
+                Region.objects.filter(name__in=('sun', "bernard's star")),
+                name=orders.col.region_id, _join_type=LOUTER
+            )
+            .with_cte(orders)
+            .annotate(amount=orders.col.amount)
+        )
+
+        data_outer = [(_.name, _.amount) for _ in joined_outer]
+        self.assertEqual(data_outer, [
+            ("bernard's star", None),
+            ('sun', 1000),
         ])
